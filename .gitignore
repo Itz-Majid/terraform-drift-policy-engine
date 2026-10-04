@@ -4,3 +4,5 @@
 *.tfplan
 __pycache__/
 *.pyc
+
+test-plan.json

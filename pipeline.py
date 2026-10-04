@@ -1,6 +1,7 @@
 import json
 
 from extract_drift import extract_drift
+from drift_normalizer import normalize_drift
 from security_classifier import classify_change
 from provenance import classify_provenance
 from policy_engine_v2 import evaluate_policy
@@ -11,7 +12,7 @@ def analyze_drift(plan_file, evidence):
     with open(plan_file) as f:
         plan = json.load(f)
 
-    drift_items = extract_drift(plan)
+    drift_items = normalize_drift(extract_drift(plan))
     findings = []
 
     provenance = classify_provenance(evidence)
