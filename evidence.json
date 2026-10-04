@@ -1,0 +1,6 @@
+{
+  "actor": "authorized",
+  "action": "modify_instance_type",
+  "timestamp": "2026-10-04T10:00:00Z",
+  "evidence_match": true
+}
