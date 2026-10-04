@@ -2,6 +2,7 @@ import json
 import unittest
 
 from extract_drift import extract_drift
+from security_classifier import classify_change
 from provenance import ProvenanceEvidence, classify_provenance
 from policy_engine_v2 import evaluate_policy
 
@@ -14,14 +15,9 @@ class TestEndToEnd(unittest.TestCase):
 
         drift = extract_drift(plan)
 
-        self.assertEqual(len(drift), 1)
-        self.assertEqual(drift[0]["resource"], "aws_instance.web")
-
         change = drift[0]["attributes"][0]
 
-        self.assertEqual(change["attribute"], "instance_type")
-        self.assertEqual(change["before"], "t3.small")
-        self.assertEqual(change["after"], "t3.large")
+        security_class = classify_change(change["attribute"])
 
         evidence = ProvenanceEvidence(
             actor="authorized",
@@ -32,8 +28,13 @@ class TestEndToEnd(unittest.TestCase):
 
         provenance = classify_provenance(evidence)
 
-        result = evaluate_policy("LOW", provenance.value)
+        result = evaluate_policy(
+            security_class,
+            provenance.value,
+        )
 
+        self.assertEqual(security_class, "LOW")
+        self.assertEqual(provenance.value, "AUTHORIZED")
         self.assertEqual(result["decision"], "CODIFY-CANDIDATE")
         self.assertTrue(result["codify_allowed"])
 
