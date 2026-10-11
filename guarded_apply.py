@@ -4,34 +4,44 @@ import subprocess
 import sys
 from pathlib import Path
 
+from reconciliation_gate import validate_reconciliation
+
 PLAN = Path("reconcile.tfplan")
+PROPOSAL = Path("reconcile-proposal.json")
 APPROVAL = Path("reconcile-approval.json")
 
 
 def main():
-    if not PLAN.is_file():
-        sys.exit("BLOCKED: saved plan not found.")
-
-    if not APPROVAL.is_file():
-        sys.exit("BLOCKED: approval record not found.")
+    for path in (PLAN, PROPOSAL, APPROVAL):
+        if not path.is_file():
+            sys.exit(f"BLOCKED: required file missing: {path}")
 
     try:
-        record = json.loads(APPROVAL.read_text())
-    except (json.JSONDecodeError, OSError):
-        sys.exit("BLOCKED: approval record is invalid.")
+        proposal = json.loads(PROPOSAL.read_text())
+        approval = json.loads(APPROVAL.read_text())
+        plan_hash = hashlib.sha256(PLAN.read_bytes()).hexdigest()
 
-    if record.get("approved") is not True:
-        sys.exit("BLOCKED: approval is not granted.")
+        result = subprocess.run(
+            ["terraform", "show", "-json", str(PLAN)],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        plan = json.loads(result.stdout)
+    except (OSError, json.JSONDecodeError, subprocess.SubprocessError) as exc:
+        sys.exit(f"BLOCKED: could not verify saved plan: {exc}")
 
-    approver = record.get("approver")
-    if not isinstance(approver, str) or not approver.strip():
-        sys.exit("BLOCKED: approver identity is missing.")
+    decision = validate_reconciliation(
+        plan, proposal, approval, plan_hash
+    )
+    if decision["status"] != "ELIGIBLE":
+        sys.exit(f"BLOCKED: {decision['reason']}")
 
-    actual_hash = hashlib.sha256(PLAN.read_bytes()).hexdigest()
-    if record.get("plan_sha256") != actual_hash:
-        sys.exit("BLOCKED: plan hash mismatch.")
-
-    if input(f"Apply this saved plan? Approver: {approver}. Type APPLY to continue: ") != "APPLY":
+    approver = approval["approver"]
+    if input(
+        f"Plan validated. Approver: {approver}. "
+        "Type APPLY to execute the saved plan: "
+    ) != "APPLY":
         sys.exit("CANCELLED: no infrastructure changes applied.")
 
     subprocess.run(["terraform", "apply", str(PLAN)], check=True)
